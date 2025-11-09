@@ -18,7 +18,6 @@ class ColorPickerProvider extends ChangeNotifier {
   PaletteColor? get matchedColor => _matchedColor;
   Offset? get tapPosition => _tapPosition;
 
-  // Получаем размеры изображения
   Size get imageSize {
     if (_imageWidth != null && _imageHeight != null) {
       return Size(_imageWidth!.toDouble(), _imageHeight!.toDouble());
@@ -48,11 +47,8 @@ class ColorPickerProvider extends ChangeNotifier {
     }
   }
 
-  // В методе pickColor добавляем проверки:
-  Future<void> pickColor(
-    Offset normalizedPosition,
-    BuildContext context,
-  ) async {
+  // Обновление позиции при перемещении пальца
+  Future<void> updateTapPosition(Offset normalizedPosition) async {
     if (_imageFile == null || _imageWidth == null || _imageHeight == null)
       return;
 
@@ -61,6 +57,10 @@ class ColorPickerProvider extends ChangeNotifier {
     if (normalizedPosition.dx < 0 || normalizedPosition.dx > 1) return;
     if (normalizedPosition.dy < 0 || normalizedPosition.dy > 1) return;
 
+    // Обновляем позицию сразу для плавного перемещения
+    _tapPosition = normalizedPosition;
+
+    // Обновляем цвет
     final imageBytes = await _imageFile!.readAsBytes();
     final image = img.decodeImage(imageBytes)!;
 
@@ -81,13 +81,20 @@ class ColorPickerProvider extends ChangeNotifier {
       pixel.b.toInt(),
     );
 
-    _tapPosition = normalizedPosition;
     _matchedColor = ColorPalette.findClosestColor(_selectedColor!);
 
-    print(
-      'Tap at: ${_tapPosition!.dx.toStringAsFixed(2)}, ${_tapPosition!.dy.toStringAsFixed(2)}',
-    );
+    notifyListeners();
+  }
 
+  // Финальное подтверждение выбора цвета
+  void finalizeColorSelection() {
+    notifyListeners();
+  }
+
+  void clearSelection() {
+    _selectedColor = null;
+    _matchedColor = null;
+    _tapPosition = null;
     notifyListeners();
   }
 }

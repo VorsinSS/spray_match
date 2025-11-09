@@ -13,6 +13,7 @@ class ImagePickerWidget extends StatefulWidget {
 class _ImagePickerWidgetState extends State<ImagePickerWidget> {
   final GlobalKey _containerKey = GlobalKey();
   Size _containerSize = Size.zero;
+  bool _isDragging = false;
 
   void _updateContainerSize() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -24,6 +25,47 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
         });
       }
     });
+  }
+
+  void _handlePanStart(DragStartDetails details, ColorPickerProvider provider) {
+    _handlePosition(details.localPosition, provider);
+    setState(() {
+      _isDragging = true;
+    });
+  }
+
+  void _handlePanUpdate(
+    DragUpdateDetails details,
+    ColorPickerProvider provider,
+  ) {
+    _handlePosition(details.localPosition, provider);
+  }
+
+  void _handlePanEnd(DragEndDetails details, ColorPickerProvider provider) {
+    setState(() {
+      _isDragging = false;
+    });
+    provider.finalizeColorSelection();
+  }
+
+  void _handlePosition(Offset localPosition, ColorPickerProvider provider) {
+    if (_containerSize.width == 0 || _containerSize.height == 0) {
+      _updateContainerSize();
+      return;
+    }
+
+    // Проверяем что координаты валидные
+    if (localPosition.dx.isNaN || localPosition.dy.isNaN) return;
+
+    // Ограничиваем координаты размерами контейнера
+    final clampedX = localPosition.dx.clamp(0, _containerSize.width);
+    final clampedY = localPosition.dy.clamp(0, _containerSize.height);
+
+    // Нормализуем координаты
+    final normalizedX = clampedX / _containerSize.width;
+    final normalizedY = clampedY / _containerSize.height;
+
+    provider.updateTapPosition(Offset(normalizedX, normalizedY));
   }
 
   @override
@@ -43,44 +85,27 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
         if (provider.imageFile != null)
           Container(
             key: _containerKey,
-            width: MediaQuery.of(context).size.width - 32, // учитываем padding
+            width: MediaQuery.of(context).size.width - 32,
             height: 300,
-            color: Colors.grey[100],
+            decoration: BoxDecoration(
+              color: Colors.grey[100],
+              borderRadius: BorderRadius.circular(8),
+            ),
             child: Stack(
               children: [
-                // Изображение
+                // Изображение с GestureDetector для перемещения
                 GestureDetector(
+                  onPanStart: (details) => _handlePanStart(details, provider),
+                  onPanUpdate: (details) => _handlePanUpdate(details, provider),
+                  onPanEnd: (details) => _handlePanEnd(details, provider),
+                  onPanCancel: () {
+                    setState(() {
+                      _isDragging = false;
+                    });
+                  },
+                  // Оставляем onTapDown для быстрых нажатий
                   onTapDown: (details) {
-                    if (_containerSize.width == 0 ||
-                        _containerSize.height == 0) {
-                      _updateContainerSize();
-                      return;
-                    }
-
-                    final localPosition = details.localPosition;
-
-                    // Проверяем что координаты валидные
-                    if (localPosition.dx.isNaN || localPosition.dy.isNaN)
-                      return;
-
-                    // Ограничиваем координаты размерами контейнера
-                    final clampedX = localPosition.dx.clamp(
-                      0,
-                      _containerSize.width,
-                    );
-                    final clampedY = localPosition.dy.clamp(
-                      0,
-                      _containerSize.height,
-                    );
-
-                    // Нормализуем координаты
-                    final normalizedX = clampedX / _containerSize.width;
-                    final normalizedY = clampedY / _containerSize.height;
-
-                    provider.pickColor(
-                      Offset(normalizedX, normalizedY),
-                      context,
-                    );
+                    _handlePosition(details.localPosition, provider);
                   },
                   child: Image.file(
                     provider.imageFile!,
@@ -96,15 +121,29 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
                     _containerSize.height > 0 &&
                     !provider.tapPosition!.dx.isNaN &&
                     !provider.tapPosition!.dy.isNaN)
-                  _buildCrosshair(provider),
+                  _buildCrosshair(provider, _isDragging),
               ],
+            ),
+          ),
+
+        // Индикатор перемещения
+        if (_isDragging)
+          Padding(
+            padding: const EdgeInsets.only(top: 8.0),
+            child: Text(
+              'Перемещайте палец для выбора цвета',
+              style: TextStyle(
+                color: Colors.blue[700],
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
       ],
     );
   }
 
-  Widget _buildCrosshair(ColorPickerProvider provider) {
+  Widget _buildCrosshair(ColorPickerProvider provider, bool isDragging) {
     // Преобразуем нормализованные координаты в абсолютные
     final displayX = provider.tapPosition!.dx * _containerSize.width;
     final displayY = provider.tapPosition!.dy * _containerSize.height;
@@ -114,7 +153,8 @@ class _ImagePickerWidgetState extends State<ImagePickerWidget> {
 
     return CrosshairWidget(
       position: Offset(displayX, displayY),
-      color: Colors.red, // Яркий цвет для видимости
+      color: isDragging ? Colors.blue : Colors.red,
+      isDragging: isDragging,
     );
   }
 }
